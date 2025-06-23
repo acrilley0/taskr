@@ -1,21 +1,23 @@
-use std::io;
-use std::io::Write;
-use std::fs::File;
-use indoc::indoc;
 use colored::Colorize;
+use indoc::indoc;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io;
+use std::io::BufRead;
+use std::io::Result;
+use std::io::Write;
 
 const ADD_ITEM: u8 = 1;
 const DELETE_ITEM: u8 = 2;
 
 fn print_instructions() {
-    let art = indoc!{r" _____  _    ____  _  ______  _
+    let art = indoc! {r" _____  _    ____  _  ______  _
                       |_   _|/ \  / ___|| |/ /  _ \| |
                         | | / _ \ \___ \| ' /| |_) | |
                         | |/ ___ \ ___) | . \|  _ <|_|
                         |_/_/   \_\____/|_|\_\_| \_(_)"};
-    println!( "{}", art );
+    println!("{}", art);
     println!("Welcome to Taskr!");
-    println!("\n 1 - Add a new task\n 2 - Delete a task\n");
 }
 
 fn print_tasks(tasks: &Vec<String>) {
@@ -23,38 +25,65 @@ fn print_tasks(tasks: &Vec<String>) {
 
     let mut counter: u8 = 1;
     for task in tasks {
-        print!("{counter}. {task}");
+        // FIXME - this is printing an extra newline???
+        println!("{counter}. {task}");
         counter += 1;
     }
 
     println!("\n 1 - Add a new task\n 2 - Delete a task\n");
 }
 
-fn write_to_file(file_name: String, tasks: &Vec<String>) {
-    let mut file = File::create(&file_name).expect("Failed to create file");
+// FIXME - Issue occurs on the second write (second run of program). First time around we write and
+// see that the file has each task on a newline. Then we run again and write to the file and every
+// tasks ends up on the same line.
+fn write_to_file(file_name: String, tasks: &Vec<String>) -> Result<()> {
+    let mut file = OpenOptions::new().write(true).open(file_name)?;
 
-    for task in tasks {
-        let result = file.write_all(task.as_bytes());
-        match result {
-            Ok(var) => var,
-            Err(error) => panic!("Error encountered while writing to file: {}", error),
+    for task in tasks.iter() {
+        file.write_all(task.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+fn read_file(tasks: &mut Vec<String>) -> Result<()> {
+    let file = match File::open("./tasks.txt") {
+        Err(_) => {
+            File::create("./tasks.txt")?;
+            return Ok(()); // We don't want to try to read from the file if we just created it
+        }
+        Ok(file) => file,
+    };
+
+    let reader = io::BufReader::new(file);
+
+    for line in reader.lines() {
+        match line {
+            Ok(line) => tasks.push(line),
+            Err(error) => panic!("Can't read line: {}", error),
         };
     }
 
-    println!("Tasks have been saved in {}.", &file_name);
+    Ok(())
 }
 
-fn main() {
+fn main() -> Result<()> {
+    let mut tasks: Vec<String> = vec![]; // Tasks that can be added to/deleted from
+
+    match read_file(&mut tasks) {
+        Ok(arg) => arg,
+        // FIXME - This can probably create the file instead of panicking
+        Err(_) => panic!("FAILURE"),
+    };
+
     print_instructions();
 
     let success = "Successfully added task!".green();
-    
-    let mut tasks: Vec<String> = vec![]; // Tasks that can be added to/deleted from
 
     loop {
-
+        print_tasks(&tasks);
         let mut action: String = String::new();
-        
+
         io::stdin()
             .read_line(&mut action)
             .expect("Failed to read option\n");
@@ -88,21 +117,23 @@ fn main() {
                 Err(_) => continue,
             };
 
-            if idx > tasks.len() {
-                let failure = "Attempted to delete non-existent task!".red();
-                panic!("{}", failure);
-            }
-
+            let err_msg = "WARNING: Not a valid task!".red();
+            match tasks.get(idx - 1) {
+                Some(x) => println!("Removing task {x}"),
+                None => {
+                    println!("{err_msg}");
+                    print_tasks(&tasks);
+                    continue;
+                }
+            };
             tasks.remove(idx - 1);
         } else {
             let invalid_action = "Invalid Action".red();
             println!("{}: {}", invalid_action, action);
-            break;
+            print_tasks(&tasks);
+            continue;
         }
-        print_tasks(&tasks);
 
-        write_to_file("tasks.txt".to_string(), &tasks);
-        // Need to close file after we are done with it
-        // Need a way to open task file if one already exists
+        write_to_file("tasks.txt".to_string(), &tasks)?;
     }
 }
