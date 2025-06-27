@@ -25,7 +25,6 @@ fn print_tasks(tasks: &Vec<String>) {
 
     let mut counter: u8 = 1;
     for task in tasks {
-        // FIXME - this is printing an extra newline???
         println!("{counter}. {task}");
         counter += 1;
     }
@@ -33,14 +32,15 @@ fn print_tasks(tasks: &Vec<String>) {
     println!("\n 1 - Add a new task\n 2 - Delete a task\n");
 }
 
-// FIXME - Issue occurs on the second write (second run of program). First time around we write and
-// see that the file has each task on a newline. Then we run again and write to the file and every
-// tasks ends up on the same line.
 fn write_to_file(file_name: String, tasks: &Vec<String>) -> Result<()> {
-    let mut file = OpenOptions::new().write(true).open(file_name)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(file_name)?;
 
     for task in tasks.iter() {
-        file.write_all(task.as_bytes())?;
+        file.write_fmt(format_args!("{}\n", task.trim()))?;
     }
 
     Ok(())
@@ -72,7 +72,6 @@ fn main() -> Result<()> {
 
     match read_file(&mut tasks) {
         Ok(arg) => arg,
-        // FIXME - This can probably create the file instead of panicking
         Err(_) => panic!("FAILURE"),
     };
 
